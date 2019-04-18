@@ -4,16 +4,18 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using CitizenFX.Core;
+using CitizenFX.Core.Native;
+using CitizenFX.Core.UI;
 using static CitizenFX.Core.Native.API;
 
 namespace TrainsClient
 {
     public class Main : BaseScript
     {
+        public static PlayerList PlayersList;
         private bool justSetup = false;
 
         private bool CreateBlips => (GetConvar("create_train_blips", "true") ?? "true").ToLower() == "true";
-
         private List<int> TrainHandles
         {
             get
@@ -121,10 +123,35 @@ namespace TrainsClient
         {
             SetTrain();
             EventHandlers.Add(GetCurrentResourceName() + ":GetTrainNetworkHandle", new Action(SetTrain));
+            API.RegisterCommand("trainstesty", new Action<int, List<object>, string>((source, arguments, raw) => { createTrains(); }), false);
             Tick += ManageTrainStops;
+            Tick += manageActiveTrains;
         }
 
         List<int> stoppingTrains = new List<int>();
+
+        private async Task manageActiveTrains()
+        {
+            await Delay(5000);
+            foreach (var train in TrainHandles)
+            {
+                var playersList = Players;
+                foreach (var p in playersList)
+                {
+                    if (NetworkIsPlayerActive(p.Handle))
+                    {
+                        var playerPedCoords = GetEntityCoords(p.Handle, true);
+                        var trainCoords = GetEntityCoords(train, true);
+                        if (GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y, playerPedCoords.Z, trainCoords.X, trainCoords.Y, trainCoords.Z, true) > 500 && !IsEntityOnScreen(train))
+                        {
+                            var trainRef = train;
+                            DeleteMissionTrain(ref trainRef);
+                            TrainHandles.Remove(train);
+                        }
+                    }
+                }
+            }
+        }
 
         private async Task ManageTrainStops()
         {
@@ -243,7 +270,31 @@ namespace TrainsClient
                         await Delay(0);
                     }
                 }
+                if (NetworkIsHost())
+                {
+                    createTrains();
+                    //TriggerServerEvent(GetCurrentResourceName() + ":SetTrainNetHandle");
+                }
 
+                /*foreach (string t in TrainModels)
+                {
+                    SetModelAsNoLongerNeeded((uint)GetHashKey(t));
+                }*/
+
+                justSetup = true;
+            }
+            else
+            {
+                justSetup = false;
+            }
+        }
+
+        private async void createTrains()
+        {
+            await Delay(0);
+            Debug.Write($"{TrainHandles.Count}");
+            if (TrainHandles.Count < 2)
+            {
                 if (NetworkIsHost())
                 {
                     bool direction = new Random().Next(0, 1) == 1;
@@ -266,22 +317,42 @@ namespace TrainsClient
 
                         new Vector3(-209.6845f, -1037.544f, 30.50939f),
                     };
-
+                    
                     for (var i = 0; i < coords.Count; i++)
                     {
-                        if ((TrainHandles.Count > i && !DoesEntityExist(TrainHandles[i])) || (!(TrainHandles.Count > i)))
+                        if (TrainHandles.Count > 2)
                         {
-                            if (i > 2)
-                            {
-                                CreateMissionTrain(24, coords[i].X, coords[i].Y, coords[i].Z, true);
-                            }
-                            else
-                            {
-                                CreateMissionTrain(new Random().Next(2, 15), coords[i].X, coords[i].Y, coords[i].Z, direction);
-                            }
-                            Debug.WriteLine($"Train {i} id: {TrainHandles[i]}");
+                            //to make sure no more then 3 trains spawn
+                            break;
                         }
-
+                        PlayersList = Players;
+                        foreach (Player p in PlayersList)
+                        {
+                            if (NetworkIsPlayerActive(p.Handle))
+                            {
+                                int playerPed = GetPlayerPed(p.Handle);
+                                var playerPedCoords = GetEntityCoords(playerPed, true);
+                                //Debug.Write($"{playerPedCoords}");
+                                var distanceBetween = GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y,
+                                    playerPedCoords.Z, coords[i].X, coords[i].Y, coords[i].Z, true);
+                                Debug.Write($"{distanceBetween}");
+                                if (GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y, playerPedCoords.Z, coords[i].X, coords[i].Y, coords[i].Z, true) < 500)
+                                {
+                                    if ((TrainHandles.Count > i && !DoesEntityExist(TrainHandles[i])) || (!(TrainHandles.Count > i)))
+                                    {
+                                        if (i > 2)
+                                        {
+                                            CreateMissionTrain(24, coords[i].X, coords[i].Y, coords[i].Z, true);
+                                        }
+                                        else
+                                        {
+                                            CreateMissionTrain(new Random().Next(2, 15), coords[i].X, coords[i].Y, coords[i].Z, direction);
+                                        }
+                                        Debug.WriteLine($"Train {i} id: {TrainHandles[i]}");
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     foreach (int t in TrainHandles)
@@ -307,45 +378,32 @@ namespace TrainsClient
                         SetPedCanBeDraggedOut(newped, false);
                         SetPedCanBeShotInVehicle(newped, false);
                     }
-
-                    TriggerServerEvent(GetCurrentResourceName() + ":SetTrainNetHandle");
-                }
-
-                if (CreateBlips)
-                {
-                    foreach (int TrainHandle in TrainHandles)
+            
+                    if (CreateBlips)
                     {
-                        int blip = 0;
-
-                        if (DoesEntityExist(TrainHandle) && !DoesBlipExist(GetBlipFromEntity(TrainHandle)))
+                        foreach (int TrainHandle in TrainHandles)
                         {
-                            blip = AddBlipForEntity(TrainHandle);
-                        }
-                        else
-                        {
-                            blip = GetBlipFromEntity(TrainHandle);
-                        }
+                            int blip = 0;
 
-                        SetBlipAsShortRange(blip, true);
-                        ShowHeadingIndicatorOnBlip(blip, true);
-                        SetBlipColour(blip, 0);
+                            if (DoesEntityExist(TrainHandle) && !DoesBlipExist(GetBlipFromEntity(TrainHandle)))
+                            {
+                                blip = AddBlipForEntity(TrainHandle);
+                            }
+                            else
+                            {
+                                blip = GetBlipFromEntity(TrainHandle);
+                            }
 
-                        BeginTextCommandSetBlipName("string");
-                        AddTextComponentSubstringPlayerName("Train");
-                        EndTextCommandSetBlipName(blip);
+                            SetBlipAsShortRange(blip, true);
+                            ShowHeadingIndicatorOnBlip(blip, true);
+                            SetBlipColour(blip, 0);
+
+                            BeginTextCommandSetBlipName("string");
+                            AddTextComponentSubstringPlayerName("Train");
+                            EndTextCommandSetBlipName(blip);
+                        }
                     }
                 }
-
-                foreach (string t in TrainModels)
-                {
-                    SetModelAsNoLongerNeeded((uint)GetHashKey(t));
-                }
-
-                justSetup = true;
-            }
-            else
-            {
-                justSetup = false;
             }
         }
     }
