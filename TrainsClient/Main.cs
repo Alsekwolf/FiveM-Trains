@@ -14,6 +14,7 @@ namespace TrainsClient
     {
         public static PlayerList PlayersList;
         private bool justSetup = false;
+        //private bool firstTick = true;
 
         private bool CreateBlips => (GetConvar("create_train_blips", "true") ?? "true").ToLower() == "true";
         private List<int> TrainHandles
@@ -70,6 +71,20 @@ namespace TrainsClient
             "TANKERCAR",
             "METROTRAIN",
             "S_M_M_LSMETRO_01" // not a train, but this model should also be loaded. (train driver ped model)
+        };
+        
+        List<Vector3> coords = new List<Vector3>()
+        {
+            new Vector3(3007f, 4105f, 54f),
+            new Vector3(1010f, 3218f, 40f),
+            new Vector3(665f, -729f, 24f),
+            //new Vector3(-594f, -1391f, 21f),
+            //new Vector3(40.2f, -1201.3f, 31.0f),
+            new Vector3(-1081.309f, -2725.259f, -7.137033f),
+            new Vector3(-536.8082f, -1286.096f, 27.08768f),
+            new Vector3(-302.6719f, -322.9958f, 10.33629f),
+            new Vector3(-1341.085f, -467.674f, 15.31838f),
+            new Vector3(-209.6845f, -1037.544f, 30.50939f)
         };
 
         // Metro train station stops
@@ -132,7 +147,7 @@ namespace TrainsClient
 
         private async Task manageActiveTrains()
         {
-            await Delay(5000);
+            await Delay(15000);
             foreach (var train in TrainHandles)
             {
                 var playersList = Players;
@@ -145,10 +160,22 @@ namespace TrainsClient
                         if (GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y, playerPedCoords.Z, trainCoords.X, trainCoords.Y, trainCoords.Z, true) > 500 && !IsEntityOnScreen(train))
                         {
                             var trainRef = train;
+                            var ped = GetPedInVehicleSeat(train, -1);
+                            DeletePed(ref ped);
                             DeleteMissionTrain(ref trainRef);
                             TrainHandles.Remove(train);
                         }
                     }
+                }
+            }
+            
+            Random rnd = new Random();
+            int chanceOfTrain  = rnd.Next(0, 100);
+            if (chanceOfTrain < 50)
+            {
+                if (TrainHandles.Count < 2)
+                {
+                    createTrains();
                 }
             }
         }
@@ -292,37 +319,18 @@ namespace TrainsClient
         private async void createTrains()
         {
             await Delay(0);
-            Debug.Write($"{TrainHandles.Count}");
+            //Debug.Write($"{TrainHandles.Count}");
             if (TrainHandles.Count < 2)
             {
                 if (NetworkIsHost())
                 {
                     bool direction = new Random().Next(0, 1) == 1;
-
-                    List<Vector3> coords = new List<Vector3>()
-                    {
-                        new Vector3(3007f, 4105f, 54f),
-                        new Vector3(1010f, 3218f, 40f),
-                        new Vector3(665f, -729f, 24f),
-                        //new Vector3(-594f, -1391f, 21f),
-                        //new Vector3(40.2f, -1201.3f, 31.0f),
-
-                        new Vector3(-1081.309f, -2725.259f, -7.137033f),
-
-                        new Vector3(-536.8082f, -1286.096f, 27.08768f),
-
-                        new Vector3(-302.6719f, -322.9958f, 10.33629f),
-
-                        new Vector3(-1341.085f, -467.674f, 15.31838f),
-
-                        new Vector3(-209.6845f, -1037.544f, 30.50939f),
-                    };
-                    
+                    //Debug.Write($"{coords.Count}");
+                    //Debug.Write($"{TrainHandles.Count}");
                     for (var i = 0; i < coords.Count; i++)
                     {
                         if (TrainHandles.Count > 2)
                         {
-                            //to make sure no more then 3 trains spawn
                             break;
                         }
                         PlayersList = Players;
@@ -335,8 +343,9 @@ namespace TrainsClient
                                 //Debug.Write($"{playerPedCoords}");
                                 var distanceBetween = GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y,
                                     playerPedCoords.Z, coords[i].X, coords[i].Y, coords[i].Z, true);
-                                Debug.Write($"{distanceBetween}");
-                                if (GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y, playerPedCoords.Z, coords[i].X, coords[i].Y, coords[i].Z, true) < 500)
+                                //Debug.Write($"{distanceBetween}");
+                                bool distanceCheckBool = await DistanceCheck(playerPedCoords, i);
+                                if (distanceCheckBool)
                                 {
                                     if ((TrainHandles.Count > i && !DoesEntityExist(TrainHandles[i])) || (!(TrainHandles.Count > i)))
                                     {
@@ -348,13 +357,13 @@ namespace TrainsClient
                                         {
                                             CreateMissionTrain(new Random().Next(2, 15), coords[i].X, coords[i].Y, coords[i].Z, direction);
                                         }
-                                        Debug.WriteLine($"Train {i} id: {TrainHandles[i]}");
+                                        //Debug.WriteLine($"Train {i} id: {TrainHandles[i]}"); //TODO: Fix this? it causes an error sometimes, not sure why.
                                     }
                                 }
                             }
                         }
                     }
-
+                    
                     foreach (int t in TrainHandles)
                     {
                         SetVehicleFixed(t);
@@ -404,6 +413,26 @@ namespace TrainsClient
                         }
                     }
                 }
+            }
+        }
+
+        private async Task<bool> DistanceCheck(Vector3 playerPedCoords, int i)
+        {
+            await Delay(0);
+            if (GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y, playerPedCoords.Z, coords[i].X, coords[i].Y, coords[i].Z, true) > 50)
+            {
+                if (GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y, playerPedCoords.Z, coords[i].X, coords[i].Y, coords[i].Z, true) < 500)
+                {
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                return false;
             }
         }
     }
