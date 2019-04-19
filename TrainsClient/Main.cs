@@ -72,19 +72,23 @@ namespace TrainsClient
             "METROTRAIN",
             "S_M_M_LSMETRO_01" // not a train, but this model should also be loaded. (train driver ped model)
         };
-        
+
         List<Vector3> coords = new List<Vector3>()
         {
+            //Cargo train coords
             new Vector3(3007f, 4105f, 54f),
             new Vector3(1010f, 3218f, 40f),
             new Vector3(665f, -729f, 24f),
+            //Cargo train coords
             //new Vector3(-594f, -1391f, 21f),
             //new Vector3(40.2f, -1201.3f, 31.0f),
+            //Metro train coords
             new Vector3(-1081.309f, -2725.259f, -7.137033f),
             new Vector3(-536.8082f, -1286.096f, 27.08768f),
             new Vector3(-302.6719f, -322.9958f, 10.33629f),
             new Vector3(-1341.085f, -467.674f, 15.31838f),
             new Vector3(-209.6845f, -1037.544f, 30.50939f)
+            //metro train coords
         };
 
         // Metro train station stops
@@ -155,7 +159,9 @@ namespace TrainsClient
                 {
                     if (NetworkIsPlayerActive(p.Handle))
                     {
-                        var playerPedCoords = GetEntityCoords(p.Handle, true);
+                        int playerPed = GetPlayerPed(p.Handle);
+                        var playerPedCoords = GetEntityCoords(playerPed, true);
+                        //Debug.Write($"{p}::{playerPedCoords}");
                         var trainCoords = GetEntityCoords(train, true);
                         if (GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y, playerPedCoords.Z, trainCoords.X, trainCoords.Y, trainCoords.Z, true) > 500 && !IsEntityOnScreen(train))
                         {
@@ -329,35 +335,58 @@ namespace TrainsClient
                     //Debug.Write($"{TrainHandles.Count}");
                     for (var i = 0; i < coords.Count; i++)
                     {
+                        bool checktrains = false;
                         if (TrainHandles.Count > 2)
                         {
                             break;
                         }
-                        PlayersList = Players;
-                        foreach (Player p in PlayersList)
+
+                        bool listEmpty = !TrainHandles.Any();
+                        if (listEmpty)
                         {
-                            if (NetworkIsPlayerActive(p.Handle))
+                            checktrains = true;
+                        }
+                        else
+                        {
+                            foreach (var trainHandle in TrainHandles)
                             {
-                                int playerPed = GetPlayerPed(p.Handle);
-                                var playerPedCoords = GetEntityCoords(playerPed, true);
-                                //Debug.Write($"{playerPedCoords}");
-                                var distanceBetween = GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y,
-                                    playerPedCoords.Z, coords[i].X, coords[i].Y, coords[i].Z, true);
-                                //Debug.Write($"{distanceBetween}");
-                                bool distanceCheckBool = await DistanceCheck(playerPedCoords, i);
-                                if (distanceCheckBool)
+                                bool checkOtherTrainsBool = await checkOtherTrains(trainHandle, i);
+                                if (checkOtherTrainsBool)
                                 {
-                                    if ((TrainHandles.Count > i && !DoesEntityExist(TrainHandles[i])) || (!(TrainHandles.Count > i)))
+                                    checktrains = true;
+                                }
+                            }
+                        }
+
+                        if (checktrains)
+                        {
+                            PlayersList = Players;
+                            foreach (Player p in PlayersList)
+                            {
+                                if (NetworkIsPlayerActive(p.Handle))
+                                {
+                                    int playerPed = GetPlayerPed(p.Handle);
+                                    var playerPedCoords = GetEntityCoords(playerPed, true);
+                                    //Debug.Write($"{playerPedCoords}");
+                                    var distanceBetween = GetDistanceBetweenCoords(playerPedCoords.X, playerPedCoords.Y,
+                                        playerPedCoords.Z, coords[i].X, coords[i].Y, coords[i].Z, true);
+                                    //Debug.Write($"{distanceBetween}");
+                                    bool distanceCheckBool = await DistanceCheck(playerPedCoords, i);
+                                    if (distanceCheckBool)
                                     {
-                                        if (i > 2)
+                                        if ((TrainHandles.Count > i && !DoesEntityExist(TrainHandles[i])) || (!(TrainHandles.Count > i)))
                                         {
-                                            CreateMissionTrain(24, coords[i].X, coords[i].Y, coords[i].Z, true);
+                                            if (i > 2)
+                                            {
+                                                CreateMissionTrain(24, coords[i].X, coords[i].Y, coords[i].Z, true);
+                                            }
+                                            else
+                                            {
+                                                CreateMissionTrain(new Random().Next(2, 15), coords[i].X, coords[i].Y, coords[i].Z, direction);
+                                            }
+                                            Debug.WriteLine($"Train {i}");
+                                            //Debug.WriteLine($"Train {i} id: {TrainHandles[i]}"); //TODO: Fix this? it causes an error sometimes, not sure why.
                                         }
-                                        else
-                                        {
-                                            CreateMissionTrain(new Random().Next(2, 15), coords[i].X, coords[i].Y, coords[i].Z, direction);
-                                        }
-                                        //Debug.WriteLine($"Train {i} id: {TrainHandles[i]}"); //TODO: Fix this? it causes an error sometimes, not sure why.
                                     }
                                 }
                             }
@@ -405,7 +434,7 @@ namespace TrainsClient
 
                             SetBlipAsShortRange(blip, true);
                             ShowHeadingIndicatorOnBlip(blip, true);
-                            SetBlipColour(blip, 0);
+                            SetBlipColour(blip, 80);
 
                             BeginTextCommandSetBlipName("string");
                             AddTextComponentSubstringPlayerName("Train");
@@ -414,6 +443,17 @@ namespace TrainsClient
                     }
                 }
             }
+        }
+
+        private async Task<bool> checkOtherTrains(int trainHandle, int i)
+        {
+            await Delay(0);
+            var trainCoords = GetEntityCoords(trainHandle, true);
+            if (GetDistanceBetweenCoords(trainCoords.X, trainCoords.Y, trainCoords.Z, coords[i].X, coords[i].Y, coords[i].Z, true) > 100)
+            {
+                return true;
+            }
+            return false;
         }
 
         private async Task<bool> DistanceCheck(Vector3 playerPedCoords, int i)
